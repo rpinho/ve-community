@@ -1,6 +1,6 @@
 # Choosing what to submit without fooling yourself
 
-Local draft. MIT licensed. For Virtual Embryo Challenge teams, especially Agent
+MIT licensed. For Virtual Embryo Challenge teams, especially Agent
 Team entries that generate many candidates. Every quality, score, panel and
 random stream below is invented. No challenge data or results from real runs
 are used. Scores have arbitrary higher-is-better units.

@@ -1,4 +1,4 @@
-# VE Community: local draft
+# VE Community: stage checks and submission selection
 
 `ve-stagecheck` checks a local public atlas sample sheet against the published
 external-data stage windows. It groups technical records by sample, handles
@@ -7,8 +7,9 @@ ages to manual review. This repository contains code, documentation and invented
 metadata fixtures only. It has no network client, challenge files, keys or
 scientific outcomes.
 
-This is a local draft for maintainer review before publication or award filing.
-Nothing has been published or filed. MIT licensed.
+It also has a synthetic-only tutorial on choosing what to submit after a large candidate search: [tutorials/selection](tutorials/selection/README.md).
+
+MIT licensed. Built for participants of the [Virtual Embryo Challenge](https://virtualembryo.ai/challenge). It uses no challenge data, and the challenge data stay under the challenge Terms of Use.
 
 The [selection tutorial](tutorials/selection/README.md) uses only synthetic
 scores to explain the winner's curse, sealed selection, paired comparisons and
