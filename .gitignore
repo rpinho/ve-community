@@ -1,0 +1,16 @@
+__pycache__/
+.DS_Store
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+# Runtime files belong outside this source-only repository.
+*.h5ad
+*.h5
+*.npz
+*.npy
+*.gz
+runtime/

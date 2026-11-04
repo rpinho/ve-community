@@ -1,0 +1,6 @@
+sample,stage,age_basis,somite_count,genotype
+invented-boundary,E9.5,individual,,WT
+invented-protected,E11,individual,,WT
+invented-late,E14,individual,,WT
+invented-uncertain,E9.4-E9.6,litter,,WT
+invented-morphological,E9.5,individual,0,WT

@@ -1,0 +1,5 @@
+Source Name	Characteristics[developmental stage]	Comment[synthetic run]
+invented-source-a	E7.25	invented-technical-a
+invented-source-a	E7.25	invented-technical-b
+invented-source-b	E7.5	invented-technical-c
+invented-source-c	E8.0	invented-technical-d
