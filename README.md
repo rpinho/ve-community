@@ -111,5 +111,4 @@ Pijuan-Sala et al. (2019), *A single-cell molecular map of mouse gastrulation an
 early organogenesis*, [Nature](https://doi.org/10.1038/s41586-019-0933-9),
 ArrayExpress accession E-MTAB-6967. No atlas records are bundled or used in tests.
 
-Award wording is in [FILING_DRAFTS.md](FILING_DRAFTS.md). Recheck current rules
-and the live register before any eventual release or filing.
+Recheck the current rules and the live public register before using any source.
