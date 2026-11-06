@@ -240,7 +240,7 @@ def transfer_check(obs: Observed, last: int) -> dict:
 
     `disjoint_r` correlates (last-3 -> last-2) with (last-1 -> last). The two
     steps share no stage, so it measures lag-two persistence of the true
-    steps. `adjacent_r` correlates (last-2 -> last-1) with (last-1 -> last).
+    steps; independent specimen noise adds no covariance but attenuates it. `adjacent_r` correlates (last-2 -> last-1) with (last-1 -> last).
     `shrink` is the adjacent least-squares slope, clipped at zero. A last-step
     rule predicts one step from the step right before it, so its coefficient
     must come from an adjacent pair: the shared stage's noise is part of the

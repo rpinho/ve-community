@@ -136,8 +136,9 @@ predict the stage one horizon later, and compare with copying the origin.
 Two step correlations help explain the result.
 
 - Disjoint steps. With released stages `0` to `4`, correlate step `1 -> 2`
-  with step `3 -> 4`, gene by gene. The steps share no stage, so specimen
-  noise does not enter the correlation. It is a diagnostic of longer-lag
+  with step `3 -> 4`, gene by gene. The steps share no stage, so
+  independent specimen noise adds no shared-stage covariance, but it does
+  attenuate the observed correlation. It is a diagnostic of longer-lag
   persistence. It speaks to the next step only if dependence is equal
   across lags.
 - Adjacent steps. Correlate step `2 -> 3` with step `3 -> 4`. A last-step
@@ -174,8 +175,9 @@ With unit step variance, the adjacent slope estimates
 opposite signs, and it enters the rule's own error the same way. So
 extrapolation can help only when persistence exceeds specimen-noise
 variance, `p > s^2`. The third row shows the gap: the disjoint correlation
-is positive, but `p = 0.3` is below `s^2 = 0.36`. The adjacent slope clips
-to zero, and the shrunk rule falls back to copying. Shrinking by the
+is positive, but `p = 0.3` is below `s^2 = 0.36`. The population
+coefficient clips to zero. Finite-sample estimates sometimes stay slightly
+positive, so the fitted rule approximately falls back to copying. Shrinking by the
 disjoint value would lose to copying. For pure noise the adjacent
 correlation approaches `-0.5`. The test suite checks these cases.
 
@@ -286,8 +288,11 @@ predeclared criterion.
    [paired seeds](../selection/README.md#4-paired-seeds) in the selection
    tutorial.
 5. **Check a last-step rule by rolling-origin forecasts** of the actual
-   rule, at the intended horizon, on released stages. Take its coefficient
-   from an adjacent pair of steps, clipped at zero. Read the disjoint-step
+   rule, at the intended horizon, on released stages. For the one-step rule
+   demonstrated here, take its coefficient from an adjacent pair of steps,
+   clipped at zero. For longer horizons, fit the last observed step against
+   the subsequent horizon-total change, using historical pairs fully
+   observed by the forecast origin. Read the disjoint-step
    correlation as a persistence diagnostic, not a verdict.
 6. **Freeze the proxy before scoring candidates.** Choose the design, the
    stages and the metric first. Changing the proxy after seeing results

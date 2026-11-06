@@ -62,8 +62,8 @@ def test_persistence_diagnostic_and_adjacent_coefficient():
 
 def test_noisy_case_positive_disjoint_r_does_not_justify_extrapolation():
     # Persistence 0.3 is below specimen-noise variance 0.36: the disjoint
-    # correlation is positive, but the adjacent slope clips to zero and the
-    # rule falls back to copying instead of losing to it.
+    # correlation is positive, but the population adjacent coefficient clips
+    # to zero, so the fitted rule approximately falls back to copying.
     case = proxy.StepCase('noisy', 0.3, 0.6)
     (row,) = proxy.disjoint_transfer([case], genes=2000, repeats=4)
     assert row['disjoint_r'] > 0.1
