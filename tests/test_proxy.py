@@ -47,15 +47,38 @@ def test_reuse_wins_on_leaky_proxy_and_loses_on_clean_proxy_and_test():
     assert leaky['trend_mse'] == pytest.approx(clean['trend_mse'])
 
 
-# 3. Disjoint-step transfer
+# 3. Step persistence
 
-def test_disjoint_correlation_tracks_whether_extrapolation_helps():
-    high, low = proxy.disjoint_transfer(genes=1500)
+def test_persistence_diagnostic_and_adjacent_coefficient():
+    rows = proxy.disjoint_transfer(proxy.STEP_CASES[:2], genes=800, repeats=4)
+    high, low = rows
     assert high['disjoint_r'] > 0.6
     assert high['extrapolate_mse'] < high['copy_mse']
+    assert high['shrunk_mse'] < high['copy_mse']
     assert abs(low['disjoint_r']) < 0.12
     assert low['extrapolate_mse'] > 1.5 * low['copy_mse']
     assert low['shrunk_mse'] < 1.05 * low['copy_mse']
+
+
+def test_noisy_case_positive_disjoint_r_does_not_justify_extrapolation():
+    # Persistence 0.3 is below specimen-noise variance 0.36: the disjoint
+    # correlation is positive, but the adjacent slope clips to zero and the
+    # rule falls back to copying instead of losing to it.
+    case = proxy.StepCase('noisy', 0.3, 0.6)
+    (row,) = proxy.disjoint_transfer([case], genes=2000, repeats=4)
+    assert row['disjoint_r'] > 0.1
+    assert row['shrunk_mse'] <= 1.02 * row['copy_mse']
+
+
+def test_rotating_increments_break_the_equal_lag_assumption():
+    # Disjoint r near zero, adjacent r high: the disjoint diagnostic would
+    # reject a rule that in fact helps. The rolling-origin check does not.
+    case = proxy.StepCase('rotating', None, 0.2)
+    (row,) = proxy.disjoint_transfer([case], genes=2000, repeats=4)
+    assert abs(row['disjoint_r']) < 0.08
+    assert row['adjacent_r'] > 0.5
+    assert row['shrunk_mse'] < 0.8 * row['copy_mse']
+    assert row['released_gain'] > 0.2
 
 
 def test_adjacent_steps_share_noise_and_correlate_negatively():
@@ -66,6 +89,13 @@ def test_adjacent_steps_share_noise_and_correlate_negatively():
     check = proxy.transfer_check(obs, last=4)
     assert check['adjacent_r'] < -0.35
     assert abs(check['disjoint_r']) < 0.08
+    assert check['shrink'] == 0.0
+
+
+def test_rolling_origin_needs_four_released_stages():
+    obs = proxy.simulate_steps(random.Random(1), 20, stages=3, persistence=0.5)
+    with pytest.raises(ValueError):
+        proxy.rolling_origin_gain(obs, last=2)
 
 
 def test_simulate_steps_rejects_bad_persistence():
@@ -75,23 +105,34 @@ def test_simulate_steps_rejects_bad_persistence():
 
 # 4. Disagreeing proxies
 
-def test_design_rule_takes_no_scores_and_picks_matched_proxy():
-    params = set(inspect.signature(proxy.closer_design).parameters)
+def test_design_screen_takes_no_scores_and_picks_fully_matched_proxy():
+    params = set(inspect.signature(proxy.design_screen).parameters)
     assert params == {'test', 'proxies', 'depth_tol'}
     test = proxy.Design('test', 2, -0.8, 1)
     a = proxy.Design('a', 1, 0.0, 3)
     b = proxy.Design('b', 2, -0.7, 1)
-    assert proxy.closer_design(test, [a, b]) is b
-    assert proxy.closer_design(test, [b, a]) is b
+    assert proxy.design_screen(test, [a, b]) is b
+    assert proxy.design_screen(test, [b, a]) is b
 
 
-def test_design_rule_refuses_ties_and_total_mismatch():
+def test_design_screen_abstains_without_a_unique_full_match():
     test = proxy.Design('test', 2, -0.8, 1)
-    horizon_only = proxy.Design('h', 2, 0.0, 3)
-    specimens_only = proxy.Design('k', 1, 0.0, 1)
-    nothing = proxy.Design('n', 1, 0.0, 3)
-    assert proxy.closer_design(test, [horizon_only, specimens_only]) is None
-    assert proxy.closer_design(test, [nothing]) is None
+    two_of_three = proxy.Design('h', 2, 0.0, 1)
+    one_of_three = proxy.Design('k', 1, -0.8, 2)
+    full1 = proxy.Design('f1', 2, -0.75, 1)
+    full2 = proxy.Design('f2', 2, -0.85, 1)
+    assert proxy.design_screen(test, [two_of_three, one_of_three]) is None
+    assert proxy.design_screen(test, [full1, full2]) is None
+    assert proxy.design_screen(test, []) is None
+
+
+def test_counting_matches_can_pick_the_wrong_sign():
+    res = proxy.proxy_disagreement(repeats=15, genes=250)
+    rows = {r['board']: r for r in res['rows']}
+    counter = {r['board']: r for r in res['counter']}
+    assert res['counter_count_pick'] == 'proxy C'
+    assert counter['proxy C']['gain'] > 0 > rows['test']['gain']
+    assert res['counter_screen_pick'] is None
 
 
 def test_matched_proxy_agrees_in_sign_with_test():
@@ -119,6 +160,6 @@ def test_script_runs_quickly_with_small_settings():
         [sys.executable, str(SCRIPT), '--repeats', '4', '--genes', '40'],
         capture_output=True, text=True, check=True, timeout=60,
     )
-    for header in ('1. Horizon leakage', '3. Disjoint-step transfer', '4. Two proxies disagree'):
+    for header in ('1. Horizon leakage', '3. Step persistence', '4. Two proxies disagree'):
         assert header in done.stdout
     assert done.stderr == ''

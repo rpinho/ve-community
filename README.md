@@ -1,4 +1,4 @@
-# VE Community: stage checks and submission selection
+# VE Community: stage checks, submission selection and proxy design
 
 `ve-stagecheck` checks a local public atlas sample sheet against the published
 external-data stage windows. It groups technical records by sample, handles
@@ -11,7 +11,7 @@ Contents:
 
 - `ve-stagecheck`: specimen-level stage-window triage for public atlas sample sheets (below).
 - [tutorials/selection](tutorials/selection/README.md): synthetic-only tutorial on choosing what to submit after a large candidate search.
-- [tutorials/proxy](tutorials/proxy/README.md): synthetic-only tutorial on whether a local proxy board is as hard as the test: horizon leakage, disjoint-step transfer and choosing between disagreeing proxies.
+- [tutorials/proxy](tutorials/proxy/README.md): synthetic-only tutorial on whether a local proxy board is as hard as the test: horizon leakage, checking a last-step extrapolation rule and a conservative screen for choosing between disagreeing proxies.
 
 MIT licensed. Built for participants of the [Virtual Embryo Challenge](https://virtualembryo.ai/challenge). It uses no challenge data, and the challenge data stay under the challenge Terms of Use.
 

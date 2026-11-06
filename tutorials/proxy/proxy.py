@@ -181,7 +181,7 @@ def horizon_leakage(repeats: int = 40, genes: int = 400, seed: int = 101) -> lis
 
 
 # ---------------------------------------------------------------------------
-# 3. Disjoint-step transfer
+# 3. Step persistence: a diagnostic, and the coefficient for a last-step rule
 
 
 def simulate_steps(
@@ -195,7 +195,7 @@ def simulate_steps(
 
     Each true step has unit variance per gene. `persistence` is the share of
     that variance carried by the drift, so it is the true correlation between
-    any two different steps. Observations add one-specimen noise.
+    any two different steps, at every lag. Observations add one-specimen noise.
     """
     if not 0 <= persistence <= 1:
         raise ValueError("persistence must be between 0 and 1")
@@ -209,15 +209,42 @@ def simulate_steps(
     return obs
 
 
+def simulate_rotating(
+    rng: random.Random,
+    genes: int,
+    stages: int,
+    noise_sd: float = 0.2,
+) -> dict[int, Vector]:
+    """Counterexample where dependence is not equal across lags.
+
+    The true step from stage k to k+1 is A*cos(k*pi/4) + B*sin(k*pi/4), with
+    independent standard-normal A and B per gene. Steps one apart correlate at
+    cos(pi/4) = 0.71; steps two apart at cos(pi/2) = 0.
+    """
+    coef = [(rng.gauss(0, 1), rng.gauss(0, 1)) for _ in range(genes)]
+    truth = [rng.gauss(0, 1) for _ in range(genes)]
+    obs = {0: [x + rng.gauss(0, noise_sd) for x in truth]}
+    for k in range(1, stages):
+        c, s = math.cos((k - 1) * math.pi / 4), math.sin((k - 1) * math.pi / 4)
+        truth = [x + a * c + b * s for x, (a, b) in zip(truth, coef)]
+        obs[k] = [x + rng.gauss(0, noise_sd) for x in truth]
+    return obs
+
+
 def step(obs: Observed, start: int, end: int) -> Vector:
     return [b - a for a, b in zip(obs[start], obs[end])]
 
 
 def transfer_check(obs: Observed, last: int) -> dict:
-    """Fit on one released step, predict a later step that shares no stage.
+    """Step correlations on released stages up to `last`.
 
-    Uses steps (last-3 -> last-2) and (last-1 -> last). Only released stages
-    up to `last` are read.
+    `disjoint_r` correlates (last-3 -> last-2) with (last-1 -> last). The two
+    steps share no stage, so it measures lag-two persistence of the true
+    steps. `adjacent_r` correlates (last-2 -> last-1) with (last-1 -> last).
+    `shrink` is the adjacent least-squares slope, clipped at zero. A last-step
+    rule predicts one step from the step right before it, so its coefficient
+    must come from an adjacent pair: the shared stage's noise is part of the
+    rule's own error.
     """
     early = step(obs, last - 3, last - 2)
     late = step(obs, last - 1, last)
@@ -225,36 +252,83 @@ def transfer_check(obs: Observed, last: int) -> dict:
     return {
         "disjoint_r": pearson(early, late),
         "adjacent_r": pearson(adjacent_a, late),
-        "shrink": slope(early, late),
+        "shrink": max(0.0, slope(adjacent_a, late)),
     }
 
 
+def rolling_origin_gain(obs: Observed, last: int) -> float:
+    """Copy MSE minus shrunk-rule MSE, one step ahead, on released stages only.
+
+    For each origin o with two earlier stages and o + 1 <= last, fit the
+    coefficient on the adjacent pair (o-2 -> o-1, o-1 -> o), predict o + 1
+    from stages up to o, and score against the released stage o + 1.
+    Positive means the rule beat copying on the stages you have.
+    """
+    gains = []
+    for o in range(2, last):
+        beta = max(0.0, slope(step(obs, o - 2, o - 1), step(obs, o - 1, o)))
+        last_step = step(obs, o - 1, o)
+        pred = [a + beta * s for a, s in zip(obs[o], last_step)]
+        gains.append(mse(obs[o], obs[o + 1]) - mse(pred, obs[o + 1]))
+    if not gains:
+        raise ValueError("need at least four released stages")
+    return mean(gains)
+
+
+@dataclass(frozen=True)
+class StepCase:
+    name: str
+    persistence: float | None  # None: rotating counterexample
+    noise_sd: float
+
+
+STEP_CASES = (
+    StepCase("p=0.80 s=0.2", 0.8, 0.2),
+    StepCase("p=0.05 s=0.2", 0.05, 0.2),
+    StepCase("p=0.30 s=0.6", 0.3, 0.6),
+    StepCase("rotating s=0.2", None, 0.2),
+)
+
+
 def disjoint_transfer(
-    persistences: Sequence[float] = (0.8, 0.05),
-    genes: int = 2000,
-    noise_sd: float = 0.2,
+    cases: Sequence[StepCase] = STEP_CASES,
+    genes: int = 800,
+    repeats: int = 20,
     seed: int = 202,
 ) -> list[dict]:
+    """Released stages 0..4, test stage 5. Means over repeats; sd is across repeats."""
     rng = random.Random(seed)
     rows = []
-    for p in persistences:
-        obs = simulate_steps(rng, genes, stages=6, persistence=p, noise_sd=noise_sd)
-        released_last, test = 4, 5
-        check = transfer_check(obs, released_last)
-        last_step = step(obs, released_last - 1, released_last)
-        anchor = obs[released_last]
-        target = obs[test]
-        beta = max(0.0, check["shrink"])
-        rows.append(
-            {
-                "persistence": p,
-                **check,
-                "copy_mse": mse(anchor, target),
-                "extrapolate_mse": mse([a + s for a, s in zip(anchor, last_step)], target),
-                "shrunk_mse": mse([a + beta * s for a, s in zip(anchor, last_step)], target),
-                "beta": beta,
-            }
-        )
+    for case in cases:
+        draws = []
+        for _ in range(repeats):
+            if case.persistence is None:
+                obs = simulate_rotating(rng, genes, stages=6, noise_sd=case.noise_sd)
+            else:
+                obs = simulate_steps(rng, genes, 6, case.persistence, case.noise_sd)
+            released_last, test = 4, 5
+            check = transfer_check(obs, released_last)
+            last_step = step(obs, released_last - 1, released_last)
+            anchor, target = obs[released_last], obs[test]
+            beta = check["shrink"]
+            copy = mse(anchor, target)
+            shrunk = mse([a + beta * s for a, s in zip(anchor, last_step)], target)
+            draws.append(
+                {
+                    **check,
+                    "beta": beta,
+                    "copy_mse": copy,
+                    "extrapolate_mse": mse([a + s for a, s in zip(anchor, last_step)], target),
+                    "shrunk_mse": shrunk,
+                    "gain": copy - shrunk,
+                    "released_gain": rolling_origin_gain(obs, released_last),
+                }
+            )
+        row = {"case": case.name, "persistence": case.persistence, "noise_sd": case.noise_sd}
+        for key in draws[0]:
+            row[key] = mean(d[key] for d in draws)
+        row["gain_sd"] = stdev(d["gain"] for d in draws)
+        rows.append(row)
     return rows
 
 
@@ -272,26 +346,41 @@ class Design:
     specimens: int     # specimens averaged per stage
 
 
-def closer_design(test: Design, proxies: Sequence[Design], depth_tol: float = 0.15) -> Design | None:
-    """Pick the proxy that matches the test on horizon, depth and specimens.
+def criteria_met(test: Design, proxy: Design, depth_tol: float = 0.15) -> tuple[bool, bool, bool]:
+    """Horizon equal, depth change within `depth_tol`, specimen count equal.
 
-    Takes no scores. Returns None when no proxy matches strictly better than
-    the others; then neither proxy should decide.
+    The tolerance is an illustrative choice. Declare it before scoring.
     """
+    return (
+        proxy.horizon == test.horizon,
+        abs(proxy.depth_step - test.depth_step) <= depth_tol,
+        proxy.specimens == test.specimens,
+    )
 
-    def matches(d: Design) -> int:
-        return (
-            (d.horizon == test.horizon)
-            + (abs(d.depth_step - test.depth_step) <= depth_tol)
-            + (d.specimens == test.specimens)
-        )
 
-    ranked = sorted(proxies, key=matches, reverse=True)
-    if not ranked or matches(ranked[0]) == 0:
+def design_screen(test: Design, proxies: Sequence[Design], depth_tol: float = 0.15) -> Design | None:
+    """Conservative design screen. Takes no scores.
+
+    Returns a proxy only if exactly one proxy meets all three criteria.
+    Otherwise returns None: no proxy settles the question, so build a
+    matched one or report that the question is open.
+    """
+    full = [d for d in proxies if all(criteria_met(test, d, depth_tol))]
+    return full[0] if len(full) == 1 else None
+
+
+def count_matches_choice(test: Design, proxies: Sequence[Design], depth_tol: float = 0.15) -> Design | None:
+    """The rule this tutorial does not recommend: most criteria met wins.
+
+    Kept to show its failure. Ties and zero matches return None.
+    """
+    counts = [(sum(criteria_met(test, d, depth_tol)), d) for d in proxies]
+    counts.sort(key=lambda c: c[0], reverse=True)
+    if not counts or counts[0][0] == 0:
         return None
-    if len(ranked) > 1 and matches(ranked[0]) == matches(ranked[1]):
+    if len(counts) > 1 and counts[0][0] == counts[1][0]:
         return None
-    return ranked[0]
+    return counts[0][1]
 
 
 def simulate_board(
@@ -334,7 +423,7 @@ def proxy_disagreement(repeats: int = 40, genes: int = 300, seed: int = 303) -> 
         Design("proxy B", horizon=2, depth_step=-0.7, specimens=1),
     ]
     # Freeze the choice before scoring anything.
-    chosen = closer_design(test, proxies)
+    chosen = design_screen(test, proxies)
     rng = random.Random(seed)
     gains = {d.name: [simulate_board(rng, d, genes) for _ in range(repeats)] for d in (*proxies, test)}
     test_sign = math.copysign(1, mean(gains["test"]))
@@ -359,11 +448,29 @@ def proxy_disagreement(repeats: int = 40, genes: int = 300, seed: int = 303) -> 
         Design("A, test depth", a.horizon, test.depth_step, a.specimens),
         Design("A, test specimens", a.horizon, a.depth_step, test.specimens),
     ]
-    ablation = [
-        {"board": d.name, "gain": mean(simulate_board(rng, d, genes) for _ in range(repeats))}
-        for d in variants
-    ]
-    return {"chosen": chosen.name if chosen else None, "rows": rows, "ablation": ablation}
+    ablation = []
+    for d in variants:
+        g = [simulate_board(rng, d, genes) for _ in range(repeats)]
+        ablation.append({"board": d.name, "gain": mean(g), "sem": sem(g)})
+    # Counterexample: counting matches picks a proxy with the wrong sign.
+    c = Design("proxy C", horizon=2, depth_step=0.0, specimens=1)
+    d = Design("proxy D", horizon=1, depth_step=-0.8, specimens=2)
+    counter = []
+    for x in (c, d):
+        g = [simulate_board(rng, x, genes) for _ in range(repeats)]
+        counter.append({"board": x.name, "horizon": x.horizon, "depth_step": x.depth_step,
+                        "specimens": x.specimens, "matches": sum(criteria_met(test, x)),
+                        "gain": mean(g), "sem": sem(g)})
+    count_pick = count_matches_choice(test, [c, d])
+    screen_pick = design_screen(test, [c, d])
+    return {
+        "chosen": chosen.name if chosen else None,
+        "rows": rows,
+        "ablation": ablation,
+        "counter": counter,
+        "counter_count_pick": count_pick.name if count_pick else None,
+        "counter_screen_pick": screen_pick.name if screen_pick else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -384,12 +491,16 @@ def report(repeats: int, genes: int) -> str:
     out.append("")
     out.append("2. Depth mismatch: covered by an earlier filing; see README.")
     out.append("")
-    out.append("3. Disjoint-step transfer (released stages 0..4, test stage 5)")
-    out.append(f"{'persistence':>11} {'disjoint r':>10} {'adjacent r':>10} {'beta':>6} {'copy':>7} {'extrap':>7} {'shrunk':>7}")
-    for r in disjoint_transfer(genes=max(genes * 5, 200)):
+    out.append("3. Step persistence (released stages 0..4, test stage 5; means over repeats)")
+    out.append(
+        f"{'case':<15} {'disjoint r':>10} {'adjacent r':>10} {'beta':>6} {'copy':>6} {'extrap':>6}"
+        f" {'shrunk':>6} {'gain':>7} {'sd':>6} {'released':>8}"
+    )
+    for r in disjoint_transfer(genes=max(genes * 2, 200), repeats=max(repeats // 2, 2)):
         out.append(
-            f"{r['persistence']:11.2f} {r['disjoint_r']:10.3f} {r['adjacent_r']:10.3f} {r['beta']:6.3f}"
-            f" {r['copy_mse']:7.3f} {r['extrapolate_mse']:7.3f} {r['shrunk_mse']:7.3f}"
+            f"{r['case']:<15} {r['disjoint_r']:10.3f} {r['adjacent_r']:10.3f} {r['beta']:6.3f}"
+            f" {r['copy_mse']:6.3f} {r['extrapolate_mse']:6.3f} {r['shrunk_mse']:6.3f}"
+            f" {r['gain']:7.3f} {r['gain_sd']:6.3f} {r['released_gain']:8.3f}"
         )
     out.append("")
     res = proxy_disagreement(repeats=repeats, genes=genes)
@@ -400,10 +511,18 @@ def report(repeats: int, genes: int) -> str:
             f"{r['board']:<8} {r['horizon']:7d} {r['depth_step']:6.2f} {r['specimens']:9d}"
             f" {r['gain']:7.3f} {r['sd']:6.3f} {r['sign_matches_test']:12.2f}"
         )
-    out.append(f"Chosen before scoring, by design match only: {res['chosen']}")
+    out.append(f"Design screen, before scoring: {res['chosen'] or 'abstain'}")
     out.append("One factor changed from proxy A toward the test:")
     for r in res["ablation"]:
-        out.append(f"  {r['board']:<18} gain {r['gain']:7.3f}")
+        out.append(f"  {r['board']:<18} gain {r['gain']:7.3f}  sem {r['sem']:.3f}")
+    out.append("Counterexample for counting matches (same test):")
+    for r in res["counter"]:
+        out.append(
+            f"  {r['board']:<8} horizon {r['horizon']} depth {r['depth_step']:5.2f} specimens {r['specimens']}"
+            f"  matches {r['matches']}  gain {r['gain']:7.3f}  sem {r['sem']:.3f}"
+        )
+    out.append(f"  counting matches picks: {res['counter_count_pick'] or 'none'}")
+    out.append(f"  design screen picks:    {res['counter_screen_pick'] or 'abstain'}")
     return "\n".join(out)
 
 
