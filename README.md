@@ -7,14 +7,20 @@ ages to manual review. This repository contains code, documentation and invented
 metadata fixtures only. It has no network client, challenge files, keys or
 scientific outcomes.
 
-It also has a synthetic-only tutorial on choosing what to submit after a large candidate search: [tutorials/selection](tutorials/selection/README.md).
+Contents:
+
+- `ve-stagecheck`: specimen-level stage-window triage for public atlas sample sheets (below).
+- [tutorials/selection](tutorials/selection/README.md): synthetic-only tutorial on choosing what to submit after a large candidate search.
+- [tutorials/proxy](tutorials/proxy/README.md): synthetic-only tutorial on whether a local proxy board is as hard as the test: horizon leakage, disjoint-step transfer and choosing between disagreeing proxies.
 
 MIT licensed. Built for participants of the [Virtual Embryo Challenge](https://virtualembryo.ai/challenge). It uses no challenge data, and the challenge data stay under the challenge Terms of Use.
 
 The [selection tutorial](tutorials/selection/README.md) uses only synthetic
 scores to explain the winner's curse, sealed selection, paired comparisons and
-expected improvement for a final best-of-k attempt. Its Python script runs
-without runtime dependencies; its checks run with the repository's pytest suite.
+expected improvement for a final best-of-k attempt. The [proxy tutorial](tutorials/proxy/README.md)
+uses only simulated trajectories to show when a local proxy is easier than
+the test. Both Python scripts run without runtime dependencies; their checks
+run with the repository's pytest suite.
 
 ## Install and use
 
